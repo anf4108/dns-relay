@@ -5,6 +5,9 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <pthread.h>
+
+
 
 #include "convert.h"
 #include "struct.h"
@@ -46,6 +49,9 @@ int receive_client_data(int socketFd, char *buf, struct sockaddr_in *clt) {
     }
     return r;
 }
+
+
+
 
 // 处理DNS查询
 void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
@@ -165,7 +171,53 @@ void dns_run() {
     close(socketFd);
 }
 
+void *handle_client(void *arg) {
+    char buf[BUFFER_SIZE];
+    struct sockaddr_in clt = *((struct sockaddr_in *)arg);
+    int socketFd = init_server_socket(&clt);
+
+    receive_client_data(socketFd, buf, &clt);
+    handle_dns_query(socketFd, buf, &clt);
+    send_response(socketFd, buf, &clt);
+
+    close(socketFd);
+    free(arg);  // 释放分配的内存
+    return NULL;
+}
+
+
+
+// void dns_run() {
+//     struct sockaddr_in srv, clt;
+//     int socketFd = init_server_socket(&srv);
+//     char buf[BUFFER_SIZE];
+
+//     while (1) {
+//         unsigned int len = sizeof(clt);
+//         int r = recvfrom(socketFd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&clt, &len);
+//         if (r < 0) {
+//             log_error("recvfrom error");
+//             continue;
+//         }
+
+//         struct sockaddr_in *clt_ptr = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
+//         memcpy(clt_ptr, &clt, sizeof(struct sockaddr_in));
+
+//         pthread_t tid;
+//         if (pthread_create(&tid, NULL, handle_client, clt_ptr) != 0) {
+//             log_error("pthread_create error");
+//             free(clt_ptr);
+//         }
+//         pthread_detach(tid);  // 使得线程在结束时自动回收资源
+//     }
+
+//     close(socketFd);
+// }
+
+
+
 int main() {
+    printf("tested by hz\n");
     log_file = stderr;
     dns_run();
     return 0;
