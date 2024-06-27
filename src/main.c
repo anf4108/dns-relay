@@ -1,11 +1,13 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <pthread.h>
+
+
 
 #include "convert.h"
 #include "struct.h"
@@ -14,12 +16,6 @@
 #include "query.h"
 
 #define LOG_MASK 15
-
-typedef struct {
-    int socketFd;
-    struct sockaddr_in clt;
-    char *buf;
-} thread_data_t;
 
 // 初始化服务器套接字
 int init_server_socket(struct sockaddr_in *srv) {
@@ -54,17 +50,20 @@ int receive_client_data(int socketFd, char *buf, struct sockaddr_in *clt) {
     return r;
 }
 
+
+
+
 // 处理DNS查询
-void handle_dns_query(thread_data_t *data) {
+void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
     dns_message *message = (dns_message *)malloc(sizeof(dns_message));
     if (message == NULL) {
         log_fatal("内存分配错误");
     }
-    byte_to_dns_message(message, data->buf);
+    byte_to_dns_message(message, buf);
 
     char *domain_name = (char *)malloc(BUFFER_SIZE);
     char *ip = (char *)malloc(IPSIZE);
-    strcpy(domain_name, (char *)message->question->qname);
+    strcpy(domain_name, message->question->qname);
     log_info("收到查询请求：%s", domain_name);
 
     int find_dn_ip = lookup_int_text(domain_name, ip);
@@ -114,9 +113,9 @@ void handle_dns_query(thread_data_t *data) {
 
         response.rr = answer;
 
-        uint32_t response_len = dns_message_to_byte((uint8_t *)data->buf, &response);
+        uint32_t response_len = dns_message_to_byte((uint8_t *)buf, &response);
 
-        sendto(data->socketFd, data->buf, response_len, 0, (struct sockaddr *)&data->clt, sizeof(data->clt));
+        sendto(socketFd, buf, response_len, 0, (struct sockaddr *)clt, sizeof(*clt));
 
         free(answer->rdata);
         free(answer);
@@ -134,9 +133,9 @@ void handle_dns_query(thread_data_t *data) {
         inet_aton(SERVER_IPADDR, &DnsSrvAddr.sin_addr);
         DnsSrvAddr.sin_port = htons(PORT);
 
-        sendto(fd, data->buf, BUFFER_SIZE, 0, (struct sockaddr *)&DnsSrvAddr, sizeof(DnsSrvAddr));
+        sendto(fd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&DnsSrvAddr, sizeof(DnsSrvAddr));
         unsigned int len = sizeof(DnsSrvAddr);
-        recvfrom(fd, data->buf, BUFFER_SIZE, 0, (struct sockaddr *)&DnsSrvAddr, &len);
+        recvfrom(fd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&DnsSrvAddr, &len);
         if (len < 0) {
             log_error("recvfrom error");
             exit(1);
@@ -147,57 +146,78 @@ void handle_dns_query(thread_data_t *data) {
     free(message);
 }
 
-// 线程处理函数
-void *thread_func(void *arg) {
-    thread_data_t *data = (thread_data_t *)arg;
-    handle_dns_query(data);
-    free(data->buf);
-    free(data);
-    pthread_exit(NULL);
+// 发送响应
+void send_response(int socketFd, char *buf, struct sockaddr_in *clt) {
+    int r = sendto(socketFd, buf, BUFFER_SIZE, 0, (struct sockaddr *)clt, sizeof(*clt));
+    if (r < 0) {
+        log_error("sendto error");
+        exit(1);
+    }
 }
 
 // 主函数
 void dns_run() {
+    char buf[BUFFER_SIZE];
     struct sockaddr_in srv, clt;
 
     int socketFd = init_server_socket(&srv);
 
     while (1) {
-        thread_data_t *data = (thread_data_t *)malloc(sizeof(thread_data_t));
-        if (!data) {
-            log_error("内存分配错误");
-            exit(1);
-        }
-
-        data->buf = (char *)malloc(BUFFER_SIZE);
-        if (!data->buf) {
-            log_error("内存分配错误");
-            free(data);
-            exit(1);
-        }
-
-        data->socketFd = socketFd;
-        int recv_len = receive_client_data(socketFd, data->buf, &data->clt);
-        if (recv_len > 0) {
-            pthread_t thread;
-            int rc = pthread_create(&thread, NULL, thread_func, (void *)data);
-            if (rc) {
-                log_error("线程创建错误");
-                free(data->buf);
-                free(data);
-                exit(1);
-            }
-            pthread_detach(thread);
-        } else {
-            free(data->buf);
-            free(data);
-        }
+        receive_client_data(socketFd, buf, &clt);
+        handle_dns_query(socketFd, buf, &clt);
+        send_response(socketFd, buf, &clt);
     }
 
     close(socketFd);
 }
 
+void *handle_client(void *arg) {
+    char buf[BUFFER_SIZE];
+    struct sockaddr_in clt = *((struct sockaddr_in *)arg);
+    int socketFd = init_server_socket(&clt);
+
+    receive_client_data(socketFd, buf, &clt);
+    handle_dns_query(socketFd, buf, &clt);
+    send_response(socketFd, buf, &clt);
+
+    close(socketFd);
+    free(arg);  // 释放分配的内存
+    return NULL;
+}
+
+
+
+// void dns_run() {
+//     struct sockaddr_in srv, clt;
+//     int socketFd = init_server_socket(&srv);
+//     char buf[BUFFER_SIZE];
+
+//     while (1) {
+//         unsigned int len = sizeof(clt);
+//         int r = recvfrom(socketFd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&clt, &len);
+//         if (r < 0) {
+//             log_error("recvfrom error");
+//             continue;
+//         }
+
+//         struct sockaddr_in *clt_ptr = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
+//         memcpy(clt_ptr, &clt, sizeof(struct sockaddr_in));
+
+//         pthread_t tid;
+//         if (pthread_create(&tid, NULL, handle_client, clt_ptr) != 0) {
+//             log_error("pthread_create error");
+//             free(clt_ptr);
+//         }
+//         pthread_detach(tid);  // 使得线程在结束时自动回收资源
+//     }
+
+//     close(socketFd);
+// }
+
+
+
 int main() {
+    printf("tested by hz\n");
     log_file = stderr;
     dns_run();
     return 0;
