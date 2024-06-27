@@ -7,3 +7,4 @@ const int PORT = 53;
 const char *SERVER_IPADDR = "10.3.9.4";
 const char *LOCAL_IPADDR = "0.0.0.0";
 FILE *log_file;
+BufferPool *bp;

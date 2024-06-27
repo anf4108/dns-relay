@@ -14,6 +14,7 @@
 #include "utils.h"
 #include "config.h"
 #include "query.h"
+#include "print.h"
 
 #define LOG_MASK 15
 
@@ -85,10 +86,10 @@ void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
         response.header->ra = 1;  // 支持递归
         response.header->z = 0;  // 保留字段
         response.header->rcode = 0;  // 没有错误
-        response.header->qdcount = htons(1);  // 问题数
-        response.header->ancount = htons(1);  // 回答数
-        response.header->nscount = htons(0);  // 授权资源记录数
-        response.header->arcount = htons(0);  // 附加资源记录数
+        response.header->qdcount = 1;  // 问题数
+        response.header->ancount = 1;  // 回答数
+        response.header->nscount = 0;  // 授权资源记录数
+        response.header->arcount = 0;  // 附加资源记录数
 
         if (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0) {
             response.header->rcode = 3;  // NXDOMAIN
@@ -101,10 +102,10 @@ void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
             log_fatal("内存分配错误");
         }
         answer->name = (uint8_t *)strdup((char *)message->question->qname);
-        answer->type = htons(1);  // A记录
-        answer->class = htons(1);  // IN类
-        answer->ttl = htonl(3600);  // 3600秒
-        answer->rdlength = htons(4);  // 4字节
+        answer->type = 1;  // A记录
+        answer->class = 1;  // IN类
+        answer->ttl = 3600;  // 3600秒
+        answer->rdlength = 4;  // 4字节
         answer->rdata = (uint8_t *)malloc(4);
         if (answer->rdata == NULL) {
             log_fatal("内存分配错误");
@@ -140,6 +141,20 @@ void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
             log_error("recvfrom error");
             exit(1);
         }
+        dns_message *response = (dns_message *)malloc(sizeof(dns_message));
+        if (response == NULL) {
+            log_fatal("内存分配错误");
+        }
+        byte_to_dns_message(response, buf);
+        print_dns_message(log_file, response);
+        if (response->rr != NULL) {
+            ip[0] = response->rr->rdata[0];
+            ip[1] = response->rr->rdata[1];
+            ip[2] = response->rr->rdata[2];
+            ip[3] = response->rr->rdata[3];
+            log_info("查询到IP地址：%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+            BufferPool_add(bp, domain_name, 1, 100, ip);
+        }
         close(fd);
     }
 
@@ -161,6 +176,8 @@ void dns_run() {
     struct sockaddr_in srv, clt;
 
     int socketFd = init_server_socket(&srv);
+
+    bp = BufferPool_create(1024, 100);
 
     while (1) {
         receive_client_data(socketFd, buf, &clt);
