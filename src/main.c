@@ -71,7 +71,7 @@ void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
     free(domain_name);
 
     if (find_dn_ip) {
-        log_info("查询到IP地址：%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+        log_info("本地查询到IP地址：%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
         dns_message response;
         response.header = (dns_header *)malloc(sizeof(dns_header));
         if (response.header == NULL) {
@@ -152,7 +152,7 @@ void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
             ip[1] = response->rr->rdata[1];
             ip[2] = response->rr->rdata[2];
             ip[3] = response->rr->rdata[3];
-            log_info("查询到IP地址：%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+            log_info("外部服务器查询到IP地址：%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
             BufferPool_add(bp, domain_name, 1, 100, ip);
         }
         close(fd);
@@ -188,19 +188,19 @@ void dns_run() {
     close(socketFd);
 }
 
-void *handle_client(void *arg) {
-    char buf[BUFFER_SIZE];
-    struct sockaddr_in clt = *((struct sockaddr_in *)arg);
-    int socketFd = init_server_socket(&clt);
+// void *handle_client(void *arg) {
+//     char buf[BUFFER_SIZE];
+//     struct sockaddr_in clt = *((struct sockaddr_in *)arg);
+//     int socketFd = init_server_socket(&clt);
 
-    receive_client_data(socketFd, buf, &clt);
-    handle_dns_query(socketFd, buf, &clt);
-    send_response(socketFd, buf, &clt);
+//     receive_client_data(socketFd, buf, &clt);
+//     handle_dns_query(socketFd, buf, &clt);
+//     send_response(socketFd, buf, &clt);
 
-    close(socketFd);
-    free(arg);  // 释放分配的内存
-    return NULL;
-}
+//     close(socketFd);
+//     free(arg);  // 释放分配的内存
+//     return NULL;
+// }
 
 
 
