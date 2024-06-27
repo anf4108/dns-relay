@@ -217,3 +217,15 @@ void dns_run() {
     }
     close(socketFd);
 }
+// 主函数
+int main() {
+    struct sockaddr_in srv;
+    int socketFd = init_server_socket(&srv);
+
+    printf("DNS Server is running...\n");
+    
+    dns_run();
+
+    close(socketFd);
+    return 0;
+}
