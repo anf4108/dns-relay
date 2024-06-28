@@ -138,6 +138,47 @@ void byte_to_dns_message(dns_message * message, const uint8_t * byte_stream) {
     }
 }
 
+void rdata_to_ip(char * ip, const uint8_t * rdata) {
+    ip[0] = rdata[0];
+    ip[1] = rdata[1];
+    ip[2] = rdata[2];
+    ip[3] = rdata[3];
+}
+
+void rdata_to_name(char * cname, const uint8_t * rdata) {
+    uint32_t offset = 0;
+    byte_to_domain_name(cname, rdata, &offset);
+}
+
+void rdata_to_mx(char * mx_record, const uint8_t * rdata) {
+    uint32_t offset = 0;
+    uint16_t preference = ntohs(*(uint16_t *)(rdata + offset));
+    offset += 2;
+    char exchange[DNS_NAME_MAX_SIZE];
+    byte_to_domain_name(exchange, rdata, &offset);
+    sprintf(mx_record, "%d %s", preference, exchange);
+}
+
+void rdata_to_soa(char * soa_record, const uint8_t * rdata) {
+    uint32_t offset = 0;
+    char mname[DNS_NAME_MAX_SIZE];
+    char rname[DNS_NAME_MAX_SIZE];
+    byte_to_domain_name(mname, rdata, &offset);
+    byte_to_domain_name(rname, rdata, &offset);
+    uint32_t serial = ntohl(*(uint32_t *)(rdata + offset)); offset += 4;
+    uint32_t refresh = ntohl(*(uint32_t *)(rdata + offset)); offset += 4;
+    uint32_t retry = ntohl(*(uint32_t *)(rdata + offset)); offset += 4;
+    uint32_t expire = ntohl(*(uint32_t *)(rdata + offset)); offset += 4;
+    uint32_t minimum = ntohl(*(uint32_t *)(rdata + offset)); offset += 4;
+    sprintf(soa_record, "%s %s %u %u %u %u %u", mname, rname, serial, refresh, retry, expire, minimum);
+}
+
+void rdata_to_txt(char * txt_record, const uint8_t * rdata, uint16_t rdlength) {
+    strncpy(txt_record, (const char *)rdata, rdlength);
+    txt_record[rdlength] = '\0';
+}
+
+
 // 将16位数转换为字节流
 static void uint16_to_byte(uint8_t * byte_stream, uint16_t num, uint32_t * offset) {
     *(uint16_t *)(byte_stream + *offset) = htons(num);

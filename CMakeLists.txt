@@ -8,6 +8,7 @@ include_directories(/usr/local/include /opt/homebrew/include include)
 
 add_executable(main
         src/main.c
+        src/struct.c
         src/convert.c
         src/config.c
         src/query.c

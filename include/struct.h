@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-// #define DNS_STRING_MAX_SIZE 8192
-// #define DNS_RR_NAME_MAX_SIZE 512
+#define DNS_STRING_MAX_SIZE 8192
+#define DNS_RR_NAME_MAX_SIZE 512
 #define DNS_NAME_MAX_SIZE 512
 
 // #define DNS_QR_QUERY 0
@@ -14,18 +14,18 @@
 // #define DNS_OPCODE_IQUERY 1
 // #define DNS_OPCODE_STATUS 2
 
-// #define DNS_TYPE_A 1
-// #define DNS_TYPE_NS 2
-// #define DNS_TYPE_CNAME 5
-// #define DNS_TYPE_SOA 6
-// #define DNS_TYPE_PTR 12
-// #define DNS_TYPE_HINFO 13
-// #define DNS_TYPE_MINFO 15
-// #define DNS_TYPE_MX 15
-// #define DNS_TYPE_TXT 16
-// #define DNS_TYPE_AAAA 28
+#define DNS_TYPE_A 1
+#define DNS_TYPE_NS 2
+#define DNS_TYPE_CNAME 5
+#define DNS_TYPE_SOA 6
+#define DNS_TYPE_PTR 12
+#define DNS_TYPE_HINFO 13
+#define DNS_TYPE_MINFO 15
+#define DNS_TYPE_MX 15
+#define DNS_TYPE_TXT 16
+#define DNS_TYPE_AAAA 28
 
-// #define DNS_CLASS_IN 1
+#define DNS_CLASS_IN 1
 
 // #define DNS_RCODE_OK 0
 // #define DNS_RCODE_NXDOMAIN 3
@@ -76,5 +76,10 @@ typedef struct MESSAGE
     dns_question * question; 
     dns_rr * rr; 
 } dns_message;
+
+void destroy_dns_header(dns_header* header);
+void destroy_dns_question(dns_question* question);
+void destroy_dns_rr(dns_rr* rr);
+void destroy_dns_message(dns_message* message);
 
 #endif // STRUCT_H

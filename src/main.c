@@ -51,7 +51,98 @@ int receive_client_data(int socketFd, char *buf, struct sockaddr_in *clt) {
     return r;
 }
 
+void send_to_local(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, dns_message *message) {
+    log_info("本地查询到IP地址：%u.%u.%u.%u", (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
+    dns_message response;
+    response.header = (dns_header *)malloc(sizeof(dns_header));
+    if (response.header == NULL) {
+        log_fatal("内存分配错误");
+    }
+    *response.header = *message->header;
+    response.header->qr = 1;  // 响应
+    response.header->opcode = 0;  // 标准查询
+    response.header->aa = 0;  // 非权威答案
+    response.header->tc = 0;  // 非截断
+    response.header->rd = 1;  // 期望递归
+    response.header->ra = 1;  // 支持递归
+    response.header->z = 0;  // 保留字段
+    response.header->rcode = 0;  // 没有错误
+    response.header->qdcount = 1;  // 问题数
+    response.header->ancount = 1;  // 回答数
+    response.header->nscount = 0;  // 授权资源记录数
+    response.header->arcount = 0;  // 附加资源记录数
 
+    if (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0) {
+        response.header->rcode = 3;  // NXDOMAIN
+    }
+
+    response.question = message->question;
+
+    dns_rr *answer = (dns_rr *)malloc(sizeof(dns_rr));
+    if (answer == NULL) {
+        log_fatal("内存分配错误");
+    }
+    answer->name = (uint8_t *)strdup((char *)message->question->qname);
+    answer->type = 1;  // A记录
+    answer->class = 1;  // IN类
+    answer->ttl = 3600;  // 3600秒
+    answer->rdlength = 4;  // 4字节
+    answer->rdata = (uint8_t *)malloc(4);
+    if (answer->rdata == NULL) {
+        log_fatal("内存分配错误");
+    }
+    memcpy(answer->rdata, ip, 4);
+
+    response.rr = answer;
+
+    uint32_t response_len = dns_message_to_byte((uint8_t *)buf, &response);
+
+    // sendto(socketFd, buf, response_len, 0, (struct sockaddr *)clt, sizeof(*clt));
+
+    free(answer->rdata);
+    free(answer);
+    free(response.header);
+}
+
+void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, dns_message *message) {
+    struct sockaddr_in DnsSrvAddr;
+    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        log_error("socket error");
+        exit(1);
+    }
+
+    bzero(&DnsSrvAddr, sizeof(DnsSrvAddr));
+    DnsSrvAddr.sin_family = AF_INET;
+    inet_aton(SERVER_IPADDR, &DnsSrvAddr.sin_addr);
+    DnsSrvAddr.sin_port = htons(PORT);
+
+    sendto(fd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&DnsSrvAddr, sizeof(DnsSrvAddr));
+    unsigned int len = sizeof(DnsSrvAddr);
+    recvfrom(fd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&DnsSrvAddr, &len);
+    if (len < 0) {
+        log_error("recvfrom error");
+        exit(1);
+    }
+    dns_message *response = (dns_message *)malloc(sizeof(dns_message));
+    if (response == NULL) {
+        log_fatal("内存分配错误");
+    }
+    byte_to_dns_message(response, buf);
+    // print_dns_message(log_file, response);
+
+    dns_rr *current_rr = response->rr;
+    while (current_rr != NULL) {
+        if (current_rr->type == DNS_TYPE_A && current_rr->rdlength == 4) {  // A记录
+            rdata_to_ip(ip, current_rr->rdata);
+            log_info("外部服务器查询到IP地址：%u.%u.%u.%u", (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
+            BufferPool_add(bp, message->question->qname, 1, 100, ip);
+        }
+        current_rr = current_rr->next;
+    }
+    destroy_dns_message(response);
+    close(fd);
+}
 
 
 // 处理DNS查询
@@ -62,103 +153,27 @@ void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
     }
     byte_to_dns_message(message, buf);
 
-    char *domain_name = (char *)malloc(BUFFER_SIZE);
-    char *ip = (char *)malloc(IPSIZE);
-    strcpy(domain_name, message->question->qname);
-    log_info("收到查询请求：%s", domain_name);
+    dns_question *current_question = message->question;
+    while (current_question != NULL) {
+        char *domain_name = (char *)malloc(BUFFER_SIZE);
+        char *ip = (char *)malloc(IPSIZE);
+        strcpy(domain_name, current_question->qname);
+        log_info("收到查询请求：%s", domain_name);
 
-    int find_dn_ip = lookup_int_text(domain_name, ip);
-    free(domain_name);
+        int find_dn_ip = lookup_int_text(domain_name, ip);
+        free(domain_name);
 
-    if (find_dn_ip) {
-        log_info("本地查询到IP地址：%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-        dns_message response;
-        response.header = (dns_header *)malloc(sizeof(dns_header));
-        if (response.header == NULL) {
-            log_fatal("内存分配错误");
-        }
-        *response.header = *message->header;
-        response.header->qr = 1;  // 响应
-        response.header->opcode = 0;  // 标准查询
-        response.header->aa = 0;  // 非权威答案
-        response.header->tc = 0;  // 非截断
-        response.header->rd = 1;  // 期望递归
-        response.header->ra = 1;  // 支持递归
-        response.header->z = 0;  // 保留字段
-        response.header->rcode = 0;  // 没有错误
-        response.header->qdcount = 1;  // 问题数
-        response.header->ancount = 1;  // 回答数
-        response.header->nscount = 0;  // 授权资源记录数
-        response.header->arcount = 0;  // 附加资源记录数
-
-        if (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0) {
-            response.header->rcode = 3;  // NXDOMAIN
+        if (find_dn_ip) {
+            send_to_local(socketFd, buf, clt, ip, message);
+        } else {
+            send_to_remote(socketFd, buf, clt, ip, message);
         }
 
-        response.question = message->question;
-
-        dns_rr *answer = (dns_rr *)malloc(sizeof(dns_rr));
-        if (answer == NULL) {
-            log_fatal("内存分配错误");
-        }
-        answer->name = (uint8_t *)strdup((char *)message->question->qname);
-        answer->type = 1;  // A记录
-        answer->class = 1;  // IN类
-        answer->ttl = 3600;  // 3600秒
-        answer->rdlength = 4;  // 4字节
-        answer->rdata = (uint8_t *)malloc(4);
-        if (answer->rdata == NULL) {
-            log_fatal("内存分配错误");
-        }
-        memcpy(answer->rdata, ip, 4);
-
-        response.rr = answer;
-
-        uint32_t response_len = dns_message_to_byte((uint8_t *)buf, &response);
-
-        sendto(socketFd, buf, response_len, 0, (struct sockaddr *)clt, sizeof(*clt));
-
-        free(answer->rdata);
-        free(answer);
-        free(response.header);
-    } else {
-        struct sockaddr_in DnsSrvAddr;
-        int fd = socket(AF_INET, SOCK_DGRAM, 0);
-        if (fd < 0) {
-            log_error("socket error");
-            exit(1);
-        }
-
-        bzero(&DnsSrvAddr, sizeof(DnsSrvAddr));
-        DnsSrvAddr.sin_family = AF_INET;
-        inet_aton(SERVER_IPADDR, &DnsSrvAddr.sin_addr);
-        DnsSrvAddr.sin_port = htons(PORT);
-
-        sendto(fd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&DnsSrvAddr, sizeof(DnsSrvAddr));
-        unsigned int len = sizeof(DnsSrvAddr);
-        recvfrom(fd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&DnsSrvAddr, &len);
-        if (len < 0) {
-            log_error("recvfrom error");
-            exit(1);
-        }
-        dns_message *response = (dns_message *)malloc(sizeof(dns_message));
-        if (response == NULL) {
-            log_fatal("内存分配错误");
-        }
-        byte_to_dns_message(response, buf);
-        print_dns_message(log_file, response);
-        if (response->rr != NULL) {
-            ip[0] = response->rr->rdata[0];
-            ip[1] = response->rr->rdata[1];
-            ip[2] = response->rr->rdata[2];
-            ip[3] = response->rr->rdata[3];
-            log_info("外部服务器查询到IP地址：%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-            BufferPool_add(bp, domain_name, 1, 100, ip);
-        }
-        close(fd);
+        free(ip);
+        current_question = current_question->next;
     }
 
-    free(message);
+    destroy_dns_message(message);
 }
 
 // 发送响应

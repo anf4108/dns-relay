@@ -75,7 +75,7 @@ bool BufferPool_find(BufferPool * bp, char * domain, bool isIPv4, char ipaddr[IP
 	printf("[找到]\n");
 
 
-	DoubleList_print(bp->dl);
+	// DoubleList_print(bp->dl);
 
 	return true;
 }
@@ -116,7 +116,7 @@ void BufferPool_add(BufferPool * bp, char * domain, bool isIPv4, uint32_t ttl, c
 		bp->currentNum++;
 	}
 
-	DoubleList_print(bp->dl);
+	// DoubleList_print(bp->dl);
 }
 
 

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "bufferpool.h"
 
+#define LOG_MASK 15
 extern const int BUFFER_SIZE;
 extern const int IPSIZE;
 extern const int PORT;
