@@ -1,17 +1,17 @@
-#include <bp-doublelist.h>
+#include "bp-doublelist.h"
 
 //创建双向链表
 DoubleList * DoubleList_create()
 {
 	DoubleList * dl = (DoubleList *)malloc(sizeof(DoubleList));
 	if (dl == NULL) {
-		printf("[失败]：malloc DoubleList");
+		log_info("[buffer pool]失败malloc DoubleList");
 		exit(-1);
 	}
 	dl->head = (struct Node *)malloc(sizeof(struct Node));
 	dl->tail = (struct Node *)malloc(sizeof(struct Node));
 	if (dl->head == NULL || dl->tail == NULL) {
-		printf("[失败]：malloc bpHashTable's head or tail");
+		log_info("[buffer pool]失败malloc bpHashTable's head or tail");
 		exit(-1);
 	}
 	dl->head->nxt = dl->tail;
@@ -55,7 +55,7 @@ struct Node * DoubleList_insertAsLast(DoubleList * dl, bpDATATYPE * pdata)
 {
 	struct Node * curr = (struct Node *)malloc(sizeof(struct Node));
 	if (curr == NULL) {
-		printf("[失败]：malloc bpHashTable's new node");
+		log_info("[buffer pool]失败malloc bpHashTable's new node");
 		exit(-1);
 	}
 	DoubleList_copyData(&(curr->data), pdata);

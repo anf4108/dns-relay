@@ -27,8 +27,8 @@
 
 #define DNS_CLASS_IN 1
 
-// #define DNS_RCODE_OK 0
-// #define DNS_RCODE_NXDOMAIN 3
+#define DNS_RCODE_OK 0
+#define DNS_RCODE_NXDOMAIN 3
 
 /// 报文Header Section结构体
 typedef struct HEADER

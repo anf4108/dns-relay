@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <time.h>
 
+#define LOG_MASK 15
+
 extern FILE * log_file;
 
 #define log_time() do { \

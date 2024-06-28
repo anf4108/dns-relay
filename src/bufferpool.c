@@ -5,7 +5,7 @@ BufferPool * BufferPool_create(int capacity, int refreshDeltaTime)
 	BufferPool * bp = (BufferPool*)malloc(sizeof(BufferPool));
 	if (bp == NULL)
 	{
-		printf("[失败]malloc Buffer Pool");
+		log_info("[buffer pool]:失败 malloc Buffer Pool");
 		exit(-1);
 	}
 	bp->nextRefreshTime = time(NULL) + refreshDeltaTime;
@@ -20,7 +20,6 @@ BufferPool * BufferPool_create(int capacity, int refreshDeltaTime)
 
 bool BufferPool_find(BufferPool * bp, char * domain, bool isIPv4, char ipaddr[IP6SIZE])
 {
-
 	if (time(NULL) > bp->nextRefreshTime)
 	{
 		// 整体刷新
@@ -44,18 +43,18 @@ bool BufferPool_find(BufferPool * bp, char * domain, bool isIPv4, char ipaddr[IP
 	key.isIpv4 = isIPv4;
 
 	struct Node * curr;
-	printf("[查找]%s的%s地址\n", key.domain, key.isIpv4 ? "IPv4" : "IPv6");
+	log_info("[buffer pool]查找%s的%s地址\n", key.domain, key.isIpv4 ? "IPv4" : "IPv6");
 
 	if (!bpHashTable_find(bp->ht, key, &curr))
 	{
-		printf("[未找到]\n");
+		log_info("[buffer pool]未找到\n");
 		return false;
 	}
 		
 
 	if (curr->data.deadTime <= time(NULL))
 	{
-		printf("[过时]%s\n", key.domain);
+		log_info("[buffer pool]%s已过时\n", key.domain);
 		// 表中数据的TTL已到，应该删掉了
 		// 删bpHashTable
 		bpHashTable_remove(bp->ht, key);
@@ -72,10 +71,7 @@ bool BufferPool_find(BufferPool * bp, char * domain, bool isIPv4, char ipaddr[IP
 	// 写入答案
 	strncpy(ipaddr, curr->data.ip, isIPv4 ? IP4SIZE : IP6SIZE);
 	
-	printf("[找到]\n");
-
-
-	// DoubleList_print(bp->dl);
+	log_info("[buffer pool]找到\n");
 
 	return true;
 }
@@ -88,7 +84,7 @@ void BufferPool_add(BufferPool * bp, char * domain, bool isIPv4, uint32_t ttl, c
 		bpDATATYPE data = DoubleList_deleteFirst(bp->dl);
 		bpHashTable_remove(bp->ht, data.key);
 		bp->currentNum--;
-		printf("[冲突]：移出%s\n", data.key.domain);
+		log_info("[buffer pool]冲突移出%s\n", data.key.domain);
 		
 	}
 	bp->currentNum++;
@@ -101,7 +97,7 @@ void BufferPool_add(BufferPool * bp, char * domain, bool isIPv4, uint32_t ttl, c
 
 	struct Node * p = DoubleList_insertAsLast(bp->dl, &data);
 	bpHashTable_insert(bp->ht, data.key, p);
-	printf("[加入]：成功加入%s\n", data.key.domain);
+	log_info("[buffer pool]：成功加入%s\n", data.key.domain);
 
 	// 如果加入的信息是IPv4拦截
 	if (data.key.isIpv4 &&
@@ -116,10 +112,7 @@ void BufferPool_add(BufferPool * bp, char * domain, bool isIPv4, uint32_t ttl, c
 		bp->currentNum++;
 	}
 
-	// DoubleList_print(bp->dl);
 }
-
-
 
 
 void BufferPool_destroy(BufferPool * bp)

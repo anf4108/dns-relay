@@ -1,32 +1,32 @@
-#include "bp-hashtable.h"
+#include "pmhashtable.h"
 
 /*-----------------------------------对外函数-----------------------------------------*/
 
-// 创建BufferPool（下简称bp）中的HashTable
-bpHashTable * bpHashTable_create(int capacity)
+// 创建PortMap（下简称pm）中的HashTable
+pmHashTable * pmHashTable_create(int capacity)
 {
-	bpHashTable * ht = (bpHashTable *)malloc(sizeof(bpHashTable));
+	pmHashTable * ht = (pmHashTable *)malloc(sizeof(pmHashTable));
 	if (ht == NULL) {
-		log_info("[buffer pool]失败malloc bpHashTable");
+		log_info("[port map]：失败 malloc pmHashTable");
 		exit(-1);
 	}
 	ht->alpha = 0.7;
 	ht->tablesize = closestPrime(capacity * 1.0 / ht->alpha);
-	ht->cells = (struct bpCell *)malloc(sizeof(struct bpCell) * ht->tablesize);
+	ht->cells = (struct pmCell *)malloc(sizeof(struct pmCell) * ht->tablesize);
 	if (ht->cells == NULL) {
-		log_info("[buffer pool]失败malloc bpHashTable's cells");
+		log_info("[port map]：失败 malloc pmHashTable's cells");
 		exit(-1);
 	}
-	
+
 	for (int i = 0; i < ht->tablesize; i++)
 		ht->cells[i].state = EMPTY;
 	return ht;
 }
 
-// 在bpHashTable中找key，把值放入pvalue，如果没找到返回false
-bool bpHashTable_find(bpHashTable * ht, bpKEYTYPE key, bpVALUETYPE * pvalue)
+// 在pmHashTable中找key，把值放入pvalue，如果没找到返回false
+bool pmHashTable_find(pmHashTable * ht, pmKEYTYPE key, pmVALUETYPE * pvalue)
 {
-	int pos = bpHashTable_findin(ht, key, 0);
+	int pos = pmHashTable_findin(ht, key, 0);
 
 	// 无结果
 	if (ht->cells[pos].state != VALID)
@@ -37,21 +37,21 @@ bool bpHashTable_find(bpHashTable * ht, bpKEYTYPE key, bpVALUETYPE * pvalue)
 	return true;
 }
 
-// 在bpHashTable中插入key-value对
-void bpHashTable_insert(bpHashTable* ht, bpKEYTYPE key, bpVALUETYPE value)
+// 在pmHashTable中插入key-value对
+void pmHashTable_insert(pmHashTable* ht, pmKEYTYPE key, pmVALUETYPE value)
 {
-	int pos = bpHashTable_findin(ht, key, 1);
+	int pos = pmHashTable_findin(ht, key, 1);
 	ht->cells[pos].key = key;
 	ht->cells[pos].value = value;
 	ht->cells[pos].state = VALID;
 }
 
 // 在pbHashTable中移除key,如果不存在key返回false
-bool bpHashTable_remove(bpHashTable* ht, bpKEYTYPE key)
+bool pmHashTable_remove(pmHashTable* ht, pmKEYTYPE key)
 {
-	int pos = bpHashTable_findin(ht, key, 0);
+	int pos = pmHashTable_findin(ht, key, 0);
 	if (ht->cells[pos].state != VALID) {
-		log_info("[buffer pool]错误：在hashtable中删不存在的key");
+		log_info("[错误]在hashtable中删不存在的key");
 		return false;
 	}
 	ht->cells[pos].state = DELETED; //延迟删除
@@ -59,9 +59,8 @@ bool bpHashTable_remove(bpHashTable* ht, bpKEYTYPE key)
 }
 
 
-
-// 销毁bpHashTable
-void bpHashTable_destroy(bpHashTable * ht){
+// 销毁pmHashTable
+void pmHashTable_destroy(pmHashTable * ht) {
 	free(ht->cells);
 	free(ht);
 }
@@ -70,29 +69,28 @@ void bpHashTable_destroy(bpHashTable * ht){
 
 
 // hash函数
-int bpHashFunction(int tablesize, bpKEYTYPE key)
+int pmHashFunction(int tablesize, pmKEYTYPE key)
 {
-	int hash = key.isIpv4;
-	int c;
-	while ((c = *(key.domain)++)) {
-		hash = 31 * hash + c;
+	int hash = key.exseq % tablesize;
+	for (int i = 0; i < IP4SIZE; i++) {
+		hash = 31 * hash + key.ip[i];
 		hash = hash % tablesize;
-	}
+	} 
 	return hash % tablesize;
 }
 
-// 域名判等
-bool bpEqual(bpKEYTYPE k1, bpKEYTYPE k2)
+// key判等
+bool pmEqual(pmKEYTYPE k1, pmKEYTYPE k2)
 {
-	return (strcmp(k1.domain, k2.domain) == 0 && k1.isIpv4 == k2.isIpv4) ? true : false;
+	return (strncmp(k1.ip, k2.ip, IP4SIZE) == 0 && k1.exseq == k2.exseq) ? true : false;
 }
 
 // 查找
-int bpHashTable_findin(bpHashTable * ht, bpKEYTYPE key, int tag)
+int pmHashTable_findin(pmHashTable * ht, pmKEYTYPE key, int tag)
 {	// tag==1：找空位,返回的index必然是空位
 	// tag==0：普通查找，返回的index可能是有效数据代表找到，可能是无效数据代表无
 
-	int currentPos = bpHashFunction(ht->tablesize, key);
+	int currentPos = pmHashFunction(ht->tablesize, key);
 	int newPos = currentPos;
 	int conflictNum = 0;
 
@@ -104,7 +102,7 @@ int bpHashTable_findin(bpHashTable * ht, bpKEYTYPE key, int tag)
 		}
 		else if (tag == 0) {
 			execute = (ht->cells[newPos].state == DELETED)
-				|| (ht->cells[newPos].state == VALID && !bpEqual(key, ht->cells[newPos].key));
+				|| (ht->cells[newPos].state == VALID && !pmEqual(key, ht->cells[newPos].key));
 		}
 		if (!execute) break;
 

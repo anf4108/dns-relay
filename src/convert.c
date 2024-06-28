@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <arpa/inet.h>
 
-#define LOG_MASK 0x0F
+// #define LOG_MASK 0x0F
 
 // 从字节流中读取一个16位数
 static uint16_t byte_to_uint16(const uint8_t * byte_stream, uint32_t * offset) {

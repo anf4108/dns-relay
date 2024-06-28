@@ -7,16 +7,12 @@
 #include <unistd.h>
 #include <pthread.h>
 
-
-
 #include "convert.h"
 #include "struct.h"
 #include "utils.h"
 #include "config.h"
 #include "query.h"
 #include "print.h"
-
-#define LOG_MASK 15
 
 // 初始化服务器套接字
 int init_server_socket(struct sockaddr_in *srv) {
@@ -66,14 +62,14 @@ void send_to_local(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, d
     response.header->rd = 1;  // 期望递归
     response.header->ra = 1;  // 支持递归
     response.header->z = 0;  // 保留字段
-    response.header->rcode = 0;  // 没有错误
+    response.header->rcode = DNS_RCODE_OK;  // 没有错误
     response.header->qdcount = 1;  // 问题数
     response.header->ancount = 1;  // 回答数
     response.header->nscount = 0;  // 授权资源记录数
     response.header->arcount = 0;  // 附加资源记录数
 
     if (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0) {
-        response.header->rcode = 3;  // NXDOMAIN
+        response.header->rcode = DNS_RCODE_NXDOMAIN;  // NXDOMAIN
     }
 
     response.question = message->question;
@@ -99,9 +95,7 @@ void send_to_local(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, d
 
     // sendto(socketFd, buf, response_len, 0, (struct sockaddr *)clt, sizeof(*clt));
 
-    free(answer->rdata);
-    free(answer);
-    free(response.header);
+    destroy_dns_rr(answer);
 }
 
 void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, dns_message *message) {
@@ -111,6 +105,23 @@ void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, 
         log_error("socket error");
         exit(1);
     }
+    /* * * * * * * * * * * * * * * * * * * add pm * * * * * * * * * * * * * * * * * * */
+    uint16_t local_id = message->header->id;
+    uint16_t global_id;
+
+    char source_ip[4];
+    source_ip[0] = (clt->sin_addr.s_addr >> 24) & 0xFF;
+    source_ip[1] = (clt->sin_addr.s_addr >> 16) & 0xFF;
+    source_ip[2] = (clt->sin_addr.s_addr >> 8) & 0xFF; 
+    source_ip[3] =  clt->sin_addr.s_addr & 0xFF;        
+
+    PortMap_allocSeq(pm, source_ip, local_id, &global_id);
+
+    // 把buf（此时的buf是将发送给dns服务器的报文）的前16位改为global_id
+    buf[0] = (global_id >> 8) & 0xFF;
+    buf[1] = global_id & 0xFF;
+
+    /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
     bzero(&DnsSrvAddr, sizeof(DnsSrvAddr));
     DnsSrvAddr.sin_family = AF_INET;
@@ -130,6 +141,25 @@ void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, 
     }
     byte_to_dns_message(response, buf);
     // print_dns_message(log_file, response);
+    /* * * * * * * * * * * * * * * * * * * add pm * * * * * * * * * * * * * * * * * * */
+    global_id = response->header->id;
+    
+    char dest_ip[4];
+    dest_ip[0] = (DnsSrvAddr.sin_addr.s_addr >> 24) & 0xFF;
+    dest_ip[1] = (DnsSrvAddr.sin_addr.s_addr >> 16) & 0xFF;
+    dest_ip[2] = (DnsSrvAddr.sin_addr.s_addr >> 8) & 0xFF;
+    dest_ip[3] = DnsSrvAddr.sin_addr.s_addr & 0xFF;
+
+    // 用global_id和dest_ip在pm中查到local_id
+    PortMap_querySeq(pm, dest_ip, global_id, &local_id);
+    
+    // 把buf（此时的buf是将发送给客户端的报文）的前16位改为local_id
+    buf[0] = (local_id >> 8) & 0xFF;
+    buf[1] = local_id & 0xFF; 
+
+    // 因已回送报文，故在pm中删去该项
+    PortMap_remove(pm, dest_ip, global_id);
+    /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
     dns_rr *current_rr = response->rr;
     while (current_rr != NULL) {
@@ -193,6 +223,8 @@ void dns_run() {
     int socketFd = init_server_socket(&srv);
 
     bp = BufferPool_create(1024, 100);
+
+	pm = PortMap_create(1024);
 
     while (1) {
         receive_client_data(socketFd, buf, &clt);
