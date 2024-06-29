@@ -353,35 +353,31 @@ void dns_run() {
     int socketFd = init_server_socket(&srv);
 
     bp = BufferPool_create(1024, 100);
-
     init_buffer_pool();
-
-	pm = PortMap_create(1024);
+    pm = PortMap_create(1024);
 
     while (1) {
-        receive_client_data(socketFd, buf, &clt);
-        handle_dns_query(socketFd, buf, &clt);
-        send_response(socketFd, buf, &clt);
-        // client_request *request = (client_request *)malloc(sizeof(client_request));
-        // if (request == NULL) {
-        //     log_fatal("内存分配错误");
-        //     continue;
-        // }
-        // request->socketFd = socketFd;
-        // receive_client_data(socketFd, request->buf, &request->clt);
-        // pthread_t tid;
-        // if (pthread_create(&tid, NULL, handle_client, request) != 0) {
-        //     log_error("Failed to create thread");
-        //     free(request);
-        // } else {
-        //     pthread_detach(tid);
-        // }
+        // receive_client_data(socketFd, buf, &clt);
+        // handle_dns_query(socketFd, buf, &clt);
+        // send_response(socketFd, buf, &clt);
+        client_request *request = (client_request *)malloc(sizeof(client_request));
+        if (request == NULL) {
+            log_fatal("内存分配错误");
+            continue;
+        }
+        request->socketFd = socketFd;
+        receive_client_data(socketFd, request->buf, &request->clt);
+        pthread_t tid;
+        if (pthread_create(&tid, NULL, handle_client, request) != 0) {
+            log_error("Failed to create thread");
+            free(request);
+        } else {
+            pthread_detach(tid);
+        }
     }
 
     close(socketFd);
 }
-
-
 
 int main() {
     printf("tested by hz\n");
