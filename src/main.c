@@ -237,14 +237,14 @@ void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, 
     dest_ip[3] = DnsSrvAddr.sin_addr.s_addr & 0xFF;
 
     // 用global_id和dest_ip在pm中查到local_id
-    PortMap_querySeq(pm, dest_ip, global_id, &local_id);
+    PortMap_querySeq(pm, global_id, &local_id, dest_ip);
     
     // 把buf（此时的buf是将发送给客户端的报文）的前16位改为local_id
     buf[0] = (local_id >> 8) & 0xFF;
     buf[1] = local_id & 0xFF; 
 
     // 因已回送报文，故在pm中删去该项
-    PortMap_remove(pm, dest_ip, global_id);
+    // PortMap_remove(pm, dest_ip, global_id);
     /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
     dns_rr *current_rr = response->rr;
@@ -375,6 +375,7 @@ void dns_run() {
             pthread_detach(tid);
         }
     }
+    PortMap_destroy(pm);
 
     close(socketFd);
 }

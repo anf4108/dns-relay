@@ -16,7 +16,6 @@ add_executable(main
         src/bp-doublelist.c
         src/bp-hashtable.c
         src/bufferpool.c
-        src/pmhashtable.c
         src/portmap.c
 )
 target_link_libraries(main)

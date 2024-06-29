@@ -5,25 +5,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pmhashtable.h>
+#include <stdint.h>
+
 #include "utils.h"
 
-// #define LOG_MASK 0x0F
 #define IP4SIZE 4
-#define IP6SIZE 16
 
-typedef pmVALUETYPE SEQTYPE;
+
+struct content {
+	char ip[IP4SIZE]; 
+	uint16_t local_seq; //客户端的查询序号
+};
 
 typedef struct {
-	SEQTYPE currentSeq;		//当前已经分配的序列号
-	int currentNum;			//当前储存的映射的数量
-	pmHashTable * ht;
+	uint16_t current_seq;		//当前已经分配的序列号
+	int size;					//总容量
+	struct content * contents;	//数组
 } PortMap;
 
+
 PortMap * PortMap_create(int capacity);
-bool PortMap_allocSeq(PortMap * pm, char ip[IP4SIZE], SEQTYPE localSeq, SEQTYPE * globalSeq);
-bool PortMap_querySeq(PortMap * pm, char ip[IP4SIZE], SEQTYPE globalSeq, SEQTYPE * localSeq);
-bool PortMap_remove(PortMap * pm, char ip[IP4SIZE], SEQTYPE globalSeq);
+bool PortMap_allocSeq(PortMap * pm, char ip[IP4SIZE], uint16_t local_seq, uint16_t * global_seq);
+bool PortMap_querySeq(PortMap * pm, uint16_t global_seq, uint16_t * local_seq, char ip[IP4SIZE]);
 void PortMap_destroy(PortMap * pm);
 
 #endif

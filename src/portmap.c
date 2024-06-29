@@ -3,62 +3,46 @@
 PortMap * PortMap_create(int capacity)
 {
 	PortMap * pm = (PortMap *)malloc(sizeof(PortMap));
-	if (pm == NULL)
-	{
-		log_info("[port map]：malloc Port Map");
+	if (pm == NULL) {
+		log_error("[port map]：malloc Port Map");
 		exit(-1);
 	}
-	pm->ht = pmHashTable_create(capacity);
-	pm->currentSeq = 0;
-	return pm;
-
-}
-
-bool PortMap_allocSeq(PortMap * pm, char ip[IP4SIZE], SEQTYPE localSeq, SEQTYPE * globalSeq)
-{
-	if (pm->currentNum == pm->ht->tablesize)
-	{
-		log_info("[port map]：已满，无法分配新id序号");
-		return false;
+	pm->size = capacity;
+	pm->contents = (struct content *)malloc(sizeof(struct content) * capacity);
+	if (pm->contents == NULL) {
+		log_error("[port map]：malloc struct content");
+		free(pm);
+		exit(-1);
 	}
-
-	pm->currentNum++;
-	log_info("[port map]：给Local Seq = %d 分配序号 Global Seq = %d\n", localSeq, pm->currentSeq);
-	// 写入pmHashTable
-	pmKEYTYPE key;
-	key.exseq = pm->currentSeq;
-	strncpy(key.ip, ip, IP4SIZE);
-	pmHashTable_insert(pm->ht, key, localSeq);
-	*globalSeq = pm->currentSeq;
-
-	pm->currentSeq++;
-	return true;
+	pm->current_seq = 0;
+	return pm;
 }
 
-bool PortMap_querySeq(PortMap * pm, char ip[IP4SIZE], SEQTYPE globalSeq, SEQTYPE * localSeq)
+bool PortMap_allocSeq(PortMap * pm, char ip[IP4SIZE], uint16_t local_seq, uint16_t * global_seq)
 {
-	pmKEYTYPE key;
-	key.exseq = globalSeq;
-	strncpy(key.ip, ip, IP4SIZE);
-	bool ans = pmHashTable_find(pm->ht, key, localSeq);
-	log_info("[port map]：Global Seq = %d 查询序号 Local Seq = %d\n", globalSeq, *localSeq);
-	return ans;
-}
+	// 内容放在下标为pm->currentSeq%size的地方
+	strncpy(pm->contents[pm->current_seq % pm->size].ip, ip, IP4SIZE);
+	pm->contents[pm->current_seq % pm->size].local_seq = local_seq;
+	*global_seq = pm->current_seq;
 
-bool PortMap_remove(PortMap * pm, char ip[IP4SIZE], SEQTYPE globalSeq)
+	log_info("[port map]客户端ip = %u.%u.%u.%u, seq = %d, 分配得到Global Seq = %d ",
+		ip[0], ip[1], ip[2], ip[3], local_seq, *global_seq);
+
+	// 待分配序号++
+	pm->current_seq++;
+}
+bool PortMap_querySeq(PortMap * pm, uint16_t global_seq, uint16_t * local_seq,  char ip[IP4SIZE])
 {
-	pmKEYTYPE key;
-	key.exseq = globalSeq;
-	strncpy(key.ip, ip, IP4SIZE);
-	pm->currentNum--;
+	// 把下标为global_seq%size的地方的内容取出
+	strncpy(ip, pm->contents[global_seq % pm->size].ip, IP4SIZE);
+	*local_seq = pm->contents[global_seq % pm->size].local_seq;
 
-	return pmHashTable_remove(pm->ht, key);
+	log_info("[port map]Global Seq = %d, 查询得到客户端ip = %u.%u.%u.%u, seq = %d",
+		global_seq, ip[0], ip[1], ip[2], ip[3], *local_seq);
 }
-
-
 
 void PortMap_destroy(PortMap * pm)
 {
-	pmHashTable_destroy(pm->ht);
+	free(pm->contents);
 	free(pm);
 }
