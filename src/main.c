@@ -65,7 +65,7 @@ void init_buffer_pool() {
             }
             log_debug("域名：%s，IP地址：%u.%u.%u.%u", domainName, (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
 
-            BufferPool_add(bp, domainName, 1, 3600, ip);  // TTL为3600秒
+            BufferPool_add(bp, domainName, 1, 360000, ip);
         }
     }
 
@@ -190,23 +190,23 @@ void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, 
         return;
     }
 
-    /* * * * * * * * * * * * * * * * * * * add pm * * * * * * * * * * * * * * * * * * */
-    uint16_t local_id = message->header->id;
-    uint16_t global_id;
+    // /* * * * * * * * * * * * * * * * * * * add pm * * * * * * * * * * * * * * * * * * */
+    // uint16_t local_id = message->header->id;
+    // uint16_t global_id;
 
-    char source_ip[4];
-    source_ip[0] = (clt->sin_addr.s_addr >> 24) & 0xFF;
-    source_ip[1] = (clt->sin_addr.s_addr >> 16) & 0xFF;
-    source_ip[2] = (clt->sin_addr.s_addr >> 8) & 0xFF; 
-    source_ip[3] =  clt->sin_addr.s_addr & 0xFF;        
+    // char source_ip[4];
+    // source_ip[0] = (clt->sin_addr.s_addr >> 24) & 0xFF;
+    // source_ip[1] = (clt->sin_addr.s_addr >> 16) & 0xFF;
+    // source_ip[2] = (clt->sin_addr.s_addr >> 8) & 0xFF; 
+    // source_ip[3] =  clt->sin_addr.s_addr & 0xFF;        
 
-    PortMap_allocSeq(pm, source_ip, local_id, &global_id);
+    // PortMap_allocSeq(pm, source_ip, local_id, &global_id);
 
-    // 把buf（此时的buf是将发送给dns服务器的报文）的前16位改为global_id
-    buf[0] = (global_id >> 8) & 0xFF;
-    buf[1] = global_id & 0xFF;
+    // // 把buf（此时的buf是将发送给dns服务器的报文）的前16位改为global_id
+    // buf[0] = (global_id >> 8) & 0xFF;
+    // buf[1] = global_id & 0xFF;
 
-    /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+    // /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
     bzero(&DnsSrvAddr, sizeof(DnsSrvAddr));
     DnsSrvAddr.sin_family = AF_INET;
@@ -227,25 +227,25 @@ void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, 
     }
     byte_to_dns_message(response, buf);
 
-    /* * * * * * * * * * * * * * * * * * * add pm * * * * * * * * * * * * * * * * * * */
-    global_id = response->header->id;
+    // /* * * * * * * * * * * * * * * * * * * add pm * * * * * * * * * * * * * * * * * * */
+    // global_id = response->header->id;
     
-    char dest_ip[4];
-    dest_ip[0] = (DnsSrvAddr.sin_addr.s_addr >> 24) & 0xFF;
-    dest_ip[1] = (DnsSrvAddr.sin_addr.s_addr >> 16) & 0xFF;
-    dest_ip[2] = (DnsSrvAddr.sin_addr.s_addr >> 8) & 0xFF;
-    dest_ip[3] = DnsSrvAddr.sin_addr.s_addr & 0xFF;
+    // char dest_ip[4];
+    // dest_ip[0] = (DnsSrvAddr.sin_addr.s_addr >> 24) & 0xFF;
+    // dest_ip[1] = (DnsSrvAddr.sin_addr.s_addr >> 16) & 0xFF;
+    // dest_ip[2] = (DnsSrvAddr.sin_addr.s_addr >> 8) & 0xFF;
+    // dest_ip[3] = DnsSrvAddr.sin_addr.s_addr & 0xFF;
 
-    // 用global_id和dest_ip在pm中查到local_id
-    PortMap_querySeq(pm, global_id, &local_id, dest_ip);
+    // // 用global_id和dest_ip在pm中查到local_id
+    // PortMap_querySeq(pm, global_id, &local_id, dest_ip);
     
-    // 把buf（此时的buf是将发送给客户端的报文）的前16位改为local_id
-    buf[0] = (local_id >> 8) & 0xFF;
-    buf[1] = local_id & 0xFF; 
+    // // 把buf（此时的buf是将发送给客户端的报文）的前16位改为local_id
+    // buf[0] = (local_id >> 8) & 0xFF;
+    // buf[1] = local_id & 0xFF; 
 
-    // 因已回送报文，故在pm中删去该项
-    // PortMap_remove(pm, dest_ip, global_id);
-    /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+    // // 因已回送报文，故在pm中删去该项
+    // // PortMap_remove(pm, dest_ip, global_id);
+    // /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
     dns_rr *current_rr = response->rr;
     while (current_rr != NULL) {
@@ -294,12 +294,12 @@ void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
 		if (message->question->qtype == DNS_TYPE_A)
 		{
 			isIPv4 = true;
-			find_dn_ip = lookup_int_text(domain_name, ip);
+			find_dn_ip = lookup_in_cache(domain_name, ip);
 		}
 		else if (message->question->qtype == DNS_TYPE_AAAA)
 		{
 			isIPv4 = false;
-			find_dn_ip = lookup_int_text_ipv6(domain_name, ip);
+			find_dn_ip = lookup_in_cache_ipv6(domain_name, ip);
 		}
 
         free(domain_name);

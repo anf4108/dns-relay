@@ -52,7 +52,7 @@ bool bpHashTable_remove(bpHashTable* ht, bpKEYTYPE key)
 	int pos = bpHashTable_findin(ht, key, 0);
 	if (ht->cells[pos].state != VALID) {
 		log_error("[buffer pool]错误：在hashtable中删不存在的key");
-		exit(-1);
+		// exit(-1);
 	}
 	ht->cells[pos].state = DELETED; //延迟删除
 	return true;

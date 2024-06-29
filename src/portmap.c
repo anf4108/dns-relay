@@ -26,7 +26,7 @@ bool PortMap_allocSeq(PortMap * pm, char ip[IP4SIZE], uint16_t local_seq, uint16
 	*global_seq = pm->current_seq;
 
 	log_info("[port map]客户端ip = %u.%u.%u.%u, seq = %d, 分配得到Global Seq = %d ",
-		ip[0], ip[1], ip[2], ip[3], local_seq, *global_seq);
+		(uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3], local_seq, *global_seq);
 
 	// 待分配序号++
 	pm->current_seq++;
@@ -38,7 +38,7 @@ bool PortMap_querySeq(PortMap * pm, uint16_t global_seq, uint16_t * local_seq,  
 	*local_seq = pm->contents[global_seq % pm->size].local_seq;
 
 	log_info("[port map]Global Seq = %d, 查询得到客户端ip = %u.%u.%u.%u, seq = %d",
-		global_seq, ip[0], ip[1], ip[2], ip[3], *local_seq);
+		global_seq, (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3], *local_seq);
 }
 
 void PortMap_destroy(PortMap * pm)
