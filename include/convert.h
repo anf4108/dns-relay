@@ -12,6 +12,8 @@ unsigned dns_message_to_byte(uint8_t * byte_stream, const dns_message * message)
 
 void rdata_to_ip(char * ip, const uint8_t * rdata);
 
+void rdata_to_ipv6(char * ip, const uint8_t * rdata);
+
 
 
 #endif //CONVERT_H

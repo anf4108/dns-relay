@@ -28,7 +28,7 @@ typedef struct {
 
 struct IPandPort {
 	char ip[IP4SIZE]; //源主机的地址（dns报文是用ipv4封装的）
-	int exseq; //外部序列号
+	short exseq; //外部序列号
 };
 
 struct pmCell {

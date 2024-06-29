@@ -23,7 +23,7 @@ bool PortMap_allocSeq(PortMap * pm, char ip[IP4SIZE], SEQTYPE localSeq, SEQTYPE 
 	}
 
 	pm->currentNum++;
-	log_info("[port map]：分配序号 Global Seq = %d\n", pm->currentSeq);
+	log_info("[port map]：给Local Seq = %d 分配序号 Global Seq = %d\n", localSeq, pm->currentSeq);
 	// 写入pmHashTable
 	pmKEYTYPE key;
 	key.exseq = pm->currentSeq;
@@ -41,7 +41,7 @@ bool PortMap_querySeq(PortMap * pm, char ip[IP4SIZE], SEQTYPE globalSeq, SEQTYPE
 	key.exseq = globalSeq;
 	strncpy(key.ip, ip, IP4SIZE);
 	bool ans = pmHashTable_find(pm->ht, key, localSeq);
-	log_info("[port map]：查询序号 Local Seq = %d\n", localSeq);
+	log_info("[port map]：Global Seq = %d 查询序号 Local Seq = %d\n", globalSeq, *localSeq);
 	return ans;
 }
 

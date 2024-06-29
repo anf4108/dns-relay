@@ -139,10 +139,11 @@ void byte_to_dns_message(dns_message * message, const uint8_t * byte_stream) {
 }
 
 void rdata_to_ip(char * ip, const uint8_t * rdata) {
-    ip[0] = rdata[0];
-    ip[1] = rdata[1];
-    ip[2] = rdata[2];
-    ip[3] = rdata[3];
+    memcpy(ip, rdata, 4);
+}
+
+void rdata_to_ipv6(char * ip, const uint8_t * rdata) {
+    memcpy(ip, rdata, 16);
 }
 
 void rdata_to_name(char * cname, const uint8_t * rdata) {

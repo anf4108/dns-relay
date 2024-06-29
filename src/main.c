@@ -86,13 +86,8 @@ int receive_client_data(int socketFd, char *buf, struct sockaddr_in *clt) {
 
 int dbg_flag;
 
-void send_to_local(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, dns_message *message) {
+void send_to_local(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, dns_message *message, bool isIPv4) {
     log_info("本地查询到IP地址：%u.%u.%u.%u", (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
-
-    dbg_flag = ((uint8_t)ip[0] == 0 && (uint8_t)ip[1] == 0 && (uint8_t)ip[2] == 0 && (uint8_t)ip[3] == 0);
-    if (dbg_flag) {
-        log_debug("域名: %s, IP: %u.%u.%u.%u", message->question->qname, (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
-    }
     dns_message response;
     response.header = (dns_header *)malloc(sizeof(dns_header));
     if (response.header == NULL) {
@@ -112,28 +107,64 @@ void send_to_local(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, d
     response.header->nscount = 0;  // 授权资源记录数
     response.header->arcount = 0;  // 附加资源记录数
 
-    if ((uint8_t)ip[0] == 0 && (uint8_t)ip[1] == 0 && (uint8_t)ip[2] == 0 && (uint8_t)ip[3] == 0) {
-        response.header->rcode = DNS_RCODE_NXDOMAIN;  // NXDOMAIN
-    }
     response.question = message->question;
 
-    dns_rr *answer = (dns_rr *)malloc(sizeof(dns_rr));
-    if (answer == NULL) {
-        log_fatal("内存分配错误");
-    }
-    answer->name = (uint8_t *)strdup((char *)message->question->qname);
-    answer->type = 1;  // A记录
-    answer->class = 1;  // IN类
-    answer->ttl = 3600;  // 3600秒
-    answer->rdlength = 4;  // 4字节
-    answer->rdata = (uint8_t *)malloc(4);
-    if (answer->rdata == NULL) {
-        log_fatal("内存分配错误");
-    }
-    memcpy(answer->rdata, ip, 4);
+	dns_rr *answer = (dns_rr *)malloc(sizeof(dns_rr));
+	if (answer == NULL) {
+		log_fatal("内存分配错误");
+	}
 
-    response.rr = answer;
+	if (isIPv4)
+	{
+		log_info("本地查询到IPv4地址：%u.%u.%u.%u", (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
+		if (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0) {
+			response.header->rcode = 3;  // NXDOMAIN
+		}
 
+		answer->name = (uint8_t *)strdup((char *)message->question->qname);
+		answer->type = DNS_TYPE_A;		// 类型
+		answer->class = 1;				// IN类
+		answer->ttl = 3600;				// 3600秒
+		answer->rdlength = IP4SIZE;		// 4字节
+		answer->rdata = (uint8_t *)malloc(IP4SIZE);
+		if (answer->rdata == NULL) {
+			log_fatal("内存分配错误");
+		}
+		memcpy(answer->rdata, ip, IP4SIZE);
+
+		response.rr = answer;
+
+	}
+	else
+	{
+		log_info("本地查询到IPv6地址：%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+			ip[0], ip[1], ip[2], ip[3],
+			ip[4], ip[5], ip[6], ip[7],
+			ip[8], ip[9], ip[10], ip[11],
+			ip[12], ip[13], ip[14], ip[15]);
+
+		if (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0
+			&& ip[4] == 0 && ip[5] == 0 && ip[6] == 0 && ip[7] == 0
+			&& ip[8] == 0 && ip[9] == 0 && ip[10] == 0 && ip[11] == 0
+			&& ip[12] == 0 && ip[13] == 0 && ip[14] == 0 && ip[15] == 0)
+		{
+			response.header->rcode = 3;  // NXDOMAIN
+		}
+
+		answer->name = (uint8_t *)strdup((char *)message->question->qname);
+		answer->type = DNS_TYPE_AAAA;	// 类型
+		answer->class = 1;				// IN类
+		answer->ttl = 3600;				// 3600秒
+		answer->rdlength = IP6SIZE;		// 16字节
+		answer->rdata = (uint8_t *)malloc(IP6SIZE);
+		if (answer->rdata == NULL) {
+			log_fatal("内存分配错误");
+		}
+		memcpy(answer->rdata, ip, IP6SIZE);
+
+		response.rr = answer;
+
+	}
     uint32_t response_len = dns_message_to_byte((uint8_t *)buf, &response);
 
     // sendto(socketFd, buf, response_len, 0, (struct sockaddr *)clt, sizeof(*clt));
@@ -141,7 +172,7 @@ void send_to_local(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, d
     destroy_dns_rr(answer);
 }
 
-void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, dns_message *message) {
+void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, dns_message *message, bool isIPv4) {
     struct sockaddr_in DnsSrvAddr;
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) {
@@ -209,9 +240,16 @@ void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, 
         if (current_rr->type == DNS_TYPE_A && current_rr->rdlength == 4) {  // A记录
             rdata_to_ip(ip, current_rr->rdata);
             log_info("外部服务器查询到IP地址：%u.%u.%u.%u", (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
-            // FIXME: 添加缓存
-            BufferPool_add(bp, message->question->qname, 1, 1000, ip);
-        }
+            BufferPool_add(bp, message->question->qname, 1, 100, ip);
+        } else if (current_rr->type == DNS_TYPE_AAAA && current_rr->rdlength == 16) { //AAAA记录
+			rdata_to_ipv6(ip, current_rr->rdata);
+			log_info("外部服务器查询到IPv6地址：%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+				ip[0], ip[1], ip[2], ip[3],
+				ip[4], ip[5], ip[6], ip[7],
+				ip[8], ip[9], ip[10], ip[11],
+				ip[12], ip[13], ip[14], ip[15]);
+			BufferPool_add(bp, message->question->qname, 0, 100, ip);
+		}
         current_rr = current_rr->next;
     }
     destroy_dns_message(response);
@@ -230,19 +268,35 @@ void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
     dns_question *current_question = message->question;
     while (current_question != NULL) {
         char *domain_name = (char *)malloc(BUFFER_SIZE);
-        char *ip = (char *)malloc(IPSIZE);
+
+		// add ipv6
+        char *ip = (char *)malloc(IP6SIZE);
+
         strcpy(domain_name, current_question->qname);
-        log_info("收到查询请求：%s", domain_name);
+        log_info("收到查询请求：%s 并且QTYPE = %d", domain_name, message->question->qtype);
 
-        int find_dn_ip = lookup_int_text(domain_name, ip);
-
-        if (find_dn_ip) {
-            send_to_local(socketFd, buf, clt, ip, message);
-        } else {
-            send_to_remote(socketFd, buf, clt, ip, message);
-        }
+		// add ipv6
+		bool isIPv4;
+		int find_dn_ip;
+		if (message->question->qtype == DNS_TYPE_A)
+		{
+			isIPv4 = true;
+			find_dn_ip = lookup_int_text(domain_name, ip);
+		}
+		else if (message->question->qtype == DNS_TYPE_AAAA)
+		{
+			isIPv4 = false;
+			find_dn_ip = lookup_int_text_ipv6(domain_name, ip);
+		}
 
         free(domain_name);
+
+        if (find_dn_ip) {
+            send_to_local(socketFd, buf, clt, ip, message, isIPv4); //加参数
+        } else {
+            send_to_remote(socketFd, buf, clt, ip, message, isIPv4); //加参数
+        }
+
         free(ip);
         current_question = current_question->next;
     }
