@@ -7,14 +7,14 @@ bpHashTable * bpHashTable_create(int capacity)
 {
 	bpHashTable * ht = (bpHashTable *)malloc(sizeof(bpHashTable));
 	if (ht == NULL) {
-		log_info("[buffer pool]失败malloc bpHashTable");
+		log_error("[buffer pool]失败malloc bpHashTable");
 		exit(-1);
 	}
 	ht->alpha = 0.7;
 	ht->tablesize = closestPrime(capacity * 1.0 / ht->alpha);
 	ht->cells = (struct bpCell *)malloc(sizeof(struct bpCell) * ht->tablesize);
 	if (ht->cells == NULL) {
-		log_info("[buffer pool]失败malloc bpHashTable's cells");
+		log_error("[buffer pool]失败malloc bpHashTable's cells");
 		exit(-1);
 	}
 	
@@ -51,8 +51,8 @@ bool bpHashTable_remove(bpHashTable* ht, bpKEYTYPE key)
 {
 	int pos = bpHashTable_findin(ht, key, 0);
 	if (ht->cells[pos].state != VALID) {
-		log_info("[buffer pool]错误：在hashtable中删不存在的key");
-		return false;
+		log_error("[buffer pool]错误：在hashtable中删不存在的key");
+		exit(-1);
 	}
 	ht->cells[pos].state = DELETED; //延迟删除
 	return true;
@@ -78,7 +78,8 @@ int bpHashFunction(int tablesize, bpKEYTYPE key)
 		hash = 31 * hash + c;
 		hash = hash % tablesize;
 	}
-	return hash % tablesize;
+
+	return (hash + tablesize) % tablesize;
 }
 
 // 域名判等
@@ -115,6 +116,10 @@ int bpHashTable_findin(bpHashTable * ht, bpKEYTYPE key, int tag)
 		else {
 			newPos = currentPos + conflictNum * conflictNum / 4;
 			newPos = (newPos + ht->tablesize * ht->tablesize) % ht->tablesize;
+		}
+		if (conflictNum > ht->tablesize) {
+			log_error("[buffer pool]hash table 探测table size次仍未找到空位");
+			exit(-1);
 		}
 	}
 	return newPos;

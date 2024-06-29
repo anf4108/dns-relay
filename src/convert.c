@@ -195,14 +195,21 @@ static void uint32_to_byte(uint8_t * byte_stream, uint32_t num, uint32_t * offse
 static void domain_name_to_byte(uint8_t * byte_stream, const char * domain_name, uint32_t * offset) {
     while (true) {
         char *location = strchr(domain_name, '.');
-        if (location == NULL) break; 
+        if (location == NULL) {
+            // 处理最后一个标签（即末尾没有点号的部分）
+            long len = strlen(domain_name);
+            byte_stream[*offset] = len;
+            memcpy(byte_stream + *offset + 1, domain_name, len);
+            *offset += len + 1;
+            break;
+        }
         long len = location - domain_name;
         byte_stream[*offset] = len;
         memcpy(byte_stream + *offset + 1, domain_name, len);
         domain_name += len + 1;
         *offset += len + 1;
     }
-    byte_stream[(*offset)++] = 0;
+    byte_stream[(*offset)++] = 0; // 添加域名结束符
 }
 
 // 将dns_header结构体转换为字节流

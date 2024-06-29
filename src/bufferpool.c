@@ -5,7 +5,7 @@ BufferPool * BufferPool_create(int capacity, int refreshDeltaTime)
 	BufferPool * bp = (BufferPool*)malloc(sizeof(BufferPool));
 	if (bp == NULL)
 	{
-		log_info("[buffer pool]:失败 malloc Buffer Pool");
+		log_info("[buffer pool]失败 malloc Buffer Pool");
 		exit(-1);
 	}
 	bp->nextRefreshTime = time(NULL) + refreshDeltaTime;
@@ -20,9 +20,11 @@ BufferPool * BufferPool_create(int capacity, int refreshDeltaTime)
 
 bool BufferPool_find(BufferPool * bp, char * domain, bool isIPv4, char ipaddr[IP6SIZE])
 {
+	log_info("[buffer pool]find函数：当前共%d项", bp->currentNum);
 	if (time(NULL) > bp->nextRefreshTime)
 	{
 		// 整体刷新
+		log_info("[buffer pool]开始整体刷新，刷新前共%d项", bp->currentNum);
 		
 		for (struct Node * p = bp->dl->head->nxt; p != bp->dl->tail; DoubleList_findNextTTLOut(bp->dl, &p))
 		{
@@ -36,6 +38,7 @@ bool BufferPool_find(BufferPool * bp, char * domain, bool isIPv4, char ipaddr[IP
 		}
 
 		bp->nextRefreshTime = time(NULL) + bp->refreshDeltaTime;
+		log_info("[buffer pool]整体刷新完毕，刷新后共%d项", bp->currentNum);
 	}
 
 	bpKEYTYPE key;
@@ -54,7 +57,7 @@ bool BufferPool_find(BufferPool * bp, char * domain, bool isIPv4, char ipaddr[IP
 
 	if (curr->data.deadTime <= time(NULL))
 	{
-		log_info("[buffer pool]%s已过时\n", key.domain);
+		log_info("[buffer pool]找到%s但已过时\n", key.domain);
 		// 表中数据的TTL已到，应该删掉了
 		// 删bpHashTable
 		bpHashTable_remove(bp->ht, key);
@@ -79,7 +82,8 @@ bool BufferPool_find(BufferPool * bp, char * domain, bool isIPv4, char ipaddr[IP
 
 void BufferPool_add(BufferPool * bp, char * domain, bool isIPv4, uint32_t ttl, char ipaddr[IP6SIZE])
 {
-	if (bp->currentNum == bp->capacity)
+	log_info("[buffer pool]add函数：当前共%d项", bp->currentNum);
+	while (bp->currentNum + 1 >= bp->capacity  )
 	{
 		bpDATATYPE data = DoubleList_deleteFirst(bp->dl);
 		bpHashTable_remove(bp->ht, data.key);

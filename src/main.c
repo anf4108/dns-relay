@@ -36,6 +36,43 @@ int init_server_socket(struct sockaddr_in *srv) {
     return socketFd;
 }
 
+void init_buffer_pool() {
+    FILE *fp;
+    char ipAddr[BUFFER_SIZE];
+    char domainName[BUFFER_SIZE];
+
+    if ((fp = fopen("../dnsrelay.txt", "r")) == NULL) {
+        log_error("file open error\n");
+        exit(1);
+    }
+
+    while (fgets(ipAddr, sizeof(ipAddr), fp) != NULL) {
+        // 去掉行末的换行符
+        ipAddr[strcspn(ipAddr, "\n")] = '\0';
+
+        // 找到IP地址和域名之间的空格，并将其替换为字符串结束符
+        char *space = strchr(ipAddr, ' ');
+        if (space != NULL) {
+            *space = '\0';
+            strcpy(domainName, space + 1);
+
+            // 将字符串形式的ip地址转换为二进制形式
+            char ip[16];
+            int ip_parts[4];
+            sscanf(ipAddr, "%d.%d.%d.%d", &ip_parts[0], &ip_parts[1], &ip_parts[2], &ip_parts[3]);
+            for (int i = 0; i < 4; i++) {
+                ip[i] = (char)ip_parts[i];
+            }
+            log_debug("域名：%s，IP地址：%u.%u.%u.%u", domainName, (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
+
+            BufferPool_add(bp, domainName, 1, 3600, ip);  // TTL为3600秒
+        }
+    }
+
+    fclose(fp);
+}
+
+
 // 接收客户端数据
 int receive_client_data(int socketFd, char *buf, struct sockaddr_in *clt) {
     unsigned int len = sizeof(*clt);
@@ -47,8 +84,15 @@ int receive_client_data(int socketFd, char *buf, struct sockaddr_in *clt) {
     return r;
 }
 
+int dbg_flag;
+
 void send_to_local(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, dns_message *message) {
     log_info("本地查询到IP地址：%u.%u.%u.%u", (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
+
+    dbg_flag = ((uint8_t)ip[0] == 0 && (uint8_t)ip[1] == 0 && (uint8_t)ip[2] == 0 && (uint8_t)ip[3] == 0);
+    if (dbg_flag) {
+        log_debug("域名: %s, IP: %u.%u.%u.%u", message->question->qname, (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
+    }
     dns_message response;
     response.header = (dns_header *)malloc(sizeof(dns_header));
     if (response.header == NULL) {
@@ -68,10 +112,9 @@ void send_to_local(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, d
     response.header->nscount = 0;  // 授权资源记录数
     response.header->arcount = 0;  // 附加资源记录数
 
-    if (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0) {
+    if ((uint8_t)ip[0] == 0 && (uint8_t)ip[1] == 0 && (uint8_t)ip[2] == 0 && (uint8_t)ip[3] == 0) {
         response.header->rcode = DNS_RCODE_NXDOMAIN;  // NXDOMAIN
     }
-
     response.question = message->question;
 
     dns_rr *answer = (dns_rr *)malloc(sizeof(dns_rr));
@@ -166,7 +209,8 @@ void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, 
         if (current_rr->type == DNS_TYPE_A && current_rr->rdlength == 4) {  // A记录
             rdata_to_ip(ip, current_rr->rdata);
             log_info("外部服务器查询到IP地址：%u.%u.%u.%u", (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
-            BufferPool_add(bp, message->question->qname, 1, 100, ip);
+            // FIXME: 添加缓存
+            BufferPool_add(bp, message->question->qname, 1, 1000, ip);
         }
         current_rr = current_rr->next;
     }
@@ -191,7 +235,6 @@ void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
         log_info("收到查询请求：%s", domain_name);
 
         int find_dn_ip = lookup_int_text(domain_name, ip);
-        free(domain_name);
 
         if (find_dn_ip) {
             send_to_local(socketFd, buf, clt, ip, message);
@@ -199,6 +242,7 @@ void handle_dns_query(int socketFd, char *buf, struct sockaddr_in *clt) {
             send_to_remote(socketFd, buf, clt, ip, message);
         }
 
+        free(domain_name);
         free(ip);
         current_question = current_question->next;
     }
@@ -215,6 +259,25 @@ void send_response(int socketFd, char *buf, struct sockaddr_in *clt) {
     }
 }
 
+typedef struct {
+    int socketFd;
+    struct sockaddr_in clt;
+    char buf[1024];
+} client_request;
+
+void *handle_client(void *arg) {
+    client_request *request = (client_request *)arg;
+    struct sockaddr_in clt = request->clt;
+    char buf[BUFFER_SIZE];
+    memcpy(buf, request->buf, BUFFER_SIZE);
+
+    handle_dns_query(request->socketFd, buf, &clt);
+    send_response(request->socketFd, buf, &clt);
+
+    free(request);
+    return NULL;
+}
+
 // 主函数
 void dns_run() {
     char buf[BUFFER_SIZE];
@@ -224,59 +287,32 @@ void dns_run() {
 
     bp = BufferPool_create(1024, 100);
 
+    init_buffer_pool();
+
 	pm = PortMap_create(1024);
 
     while (1) {
         receive_client_data(socketFd, buf, &clt);
         handle_dns_query(socketFd, buf, &clt);
         send_response(socketFd, buf, &clt);
+        // client_request *request = (client_request *)malloc(sizeof(client_request));
+        // if (request == NULL) {
+        //     log_fatal("内存分配错误");
+        //     continue;
+        // }
+        // request->socketFd = socketFd;
+        // receive_client_data(socketFd, request->buf, &request->clt);
+        // pthread_t tid;
+        // if (pthread_create(&tid, NULL, handle_client, request) != 0) {
+        //     log_error("Failed to create thread");
+        //     free(request);
+        // } else {
+        //     pthread_detach(tid);
+        // }
     }
 
     close(socketFd);
 }
-
-// void *handle_client(void *arg) {
-//     char buf[BUFFER_SIZE];
-//     struct sockaddr_in clt = *((struct sockaddr_in *)arg);
-//     int socketFd = init_server_socket(&clt);
-
-//     receive_client_data(socketFd, buf, &clt);
-//     handle_dns_query(socketFd, buf, &clt);
-//     send_response(socketFd, buf, &clt);
-
-//     close(socketFd);
-//     free(arg);  // 释放分配的内存
-//     return NULL;
-// }
-
-
-
-// void dns_run() {
-//     struct sockaddr_in srv, clt;
-//     int socketFd = init_server_socket(&srv);
-//     char buf[BUFFER_SIZE];
-
-//     while (1) {
-//         unsigned int len = sizeof(clt);
-//         int r = recvfrom(socketFd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&clt, &len);
-//         if (r < 0) {
-//             log_error("recvfrom error");
-//             continue;
-//         }
-
-//         struct sockaddr_in *clt_ptr = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
-//         memcpy(clt_ptr, &clt, sizeof(struct sockaddr_in));
-
-//         pthread_t tid;
-//         if (pthread_create(&tid, NULL, handle_client, clt_ptr) != 0) {
-//             log_error("pthread_create error");
-//             free(clt_ptr);
-//         }
-//         pthread_detach(tid);  // 使得线程在结束时自动回收资源
-//     }
-
-//     close(socketFd);
-// }
 
 
 

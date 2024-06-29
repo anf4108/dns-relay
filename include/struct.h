@@ -51,7 +51,7 @@ typedef struct HEADER
 /// 报文Question Section结构体，以链表表示
 typedef struct QUESTION
 {
-    uint8_t * qname;
+    char * qname;
     uint16_t qtype;
     uint16_t qclass;
     struct QUESTION * next;
@@ -60,7 +60,7 @@ typedef struct QUESTION
 /// 报文Resource Record结构体，以链表表示
 typedef struct RESOURCE_RECORD
 {
-    uint8_t * name;
+    char * name;
     uint16_t type;
     uint16_t class;
     uint32_t ttl;
