@@ -179,6 +179,17 @@ void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, 
         log_error("socket error");
         exit(1);
     }
+
+    // 设置超时时间为5秒
+    struct timeval timeout;
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        log_error("setsockopt error");
+        close(fd);
+        return;
+    }
+
     /* * * * * * * * * * * * * * * * * * * add pm * * * * * * * * * * * * * * * * * * */
     uint16_t local_id = message->header->id;
     uint16_t global_id;
@@ -204,17 +215,18 @@ void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, 
 
     sendto(fd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&DnsSrvAddr, sizeof(DnsSrvAddr));
     unsigned int len = sizeof(DnsSrvAddr);
-    recvfrom(fd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&DnsSrvAddr, &len);
-    if (len < 0) {
-        log_error("recvfrom error");
-        exit(1);
+    int r = recvfrom(fd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&DnsSrvAddr, &len);
+    if (r < 0) {
+        log_error("recvfrom error or timeout");
+        close(fd);
+        return;
     }
     dns_message *response = (dns_message *)malloc(sizeof(dns_message));
     if (response == NULL) {
         log_fatal("内存分配错误");
     }
     byte_to_dns_message(response, buf);
-    // print_dns_message(log_file, response);
+
     /* * * * * * * * * * * * * * * * * * * add pm * * * * * * * * * * * * * * * * * * */
     global_id = response->header->id;
     
@@ -242,19 +254,20 @@ void send_to_remote(int socketFd, char *buf, struct sockaddr_in *clt, char *ip, 
             log_info("外部服务器查询到IP地址：%u.%u.%u.%u", (uint8_t)ip[0], (uint8_t)ip[1], (uint8_t)ip[2], (uint8_t)ip[3]);
             BufferPool_add(bp, message->question->qname, 1, 100, ip);
         } else if (current_rr->type == DNS_TYPE_AAAA && current_rr->rdlength == 16) { //AAAA记录
-			rdata_to_ipv6(ip, current_rr->rdata);
-			log_info("外部服务器查询到IPv6地址：%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
-				ip[0], ip[1], ip[2], ip[3],
-				ip[4], ip[5], ip[6], ip[7],
-				ip[8], ip[9], ip[10], ip[11],
-				ip[12], ip[13], ip[14], ip[15]);
-			BufferPool_add(bp, message->question->qname, 0, 100, ip);
-		}
+            rdata_to_ipv6(ip, current_rr->rdata);
+            log_info("外部服务器查询到IPv6地址：%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+                ip[0], ip[1], ip[2], ip[3],
+                ip[4], ip[5], ip[6], ip[7],
+                ip[8], ip[9], ip[10], ip[11],
+                ip[12], ip[13], ip[14], ip[15]);
+            BufferPool_add(bp, message->question->qname, 0, 100, ip);
+        }
         current_rr = current_rr->next;
     }
     destroy_dns_message(response);
     close(fd);
 }
+
 
 
 // 处理DNS查询
